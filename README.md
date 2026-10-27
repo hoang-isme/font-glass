@@ -65,16 +65,4 @@ Lưu ý: sau khi cài font mới vào Windows, Chrome có thể chưa cập nh�
 
 ## Đóng góp
 
-Đây là dự án mở để mọi người khám phá, góp ý, fork và cải thiện. Nếu bạn rành JavaScript, CSS, API extension hoặc đơn giản là phát hiện một lỗi khó chịu, **pull request và issue đều được chào đón**.
-
-Tác giả là người nêu bài toán, thử nghiệm và quyết định hướng sản phẩm; AI đã hỗ trợ đáng kể trong quá trình triển khai code. Vì vậy, đừng ngại đề xuất thay đổi — code tốt hơn quan trọng hơn chuyện ai gõ dòng code đầu tiên.
-
-## Vì sao lại làm cái này?
-
-Vì đôi khi bạn chỉ muốn dùng font mình thích trên web, chứ không muốn biến việc đổi font thành một luận án CSS. Những công cụ sẵn có chưa đáp ứng đúng nhu cầu của mình, nên mình thử mô tả chính xác thứ mình muốn, nhờ AI hỗ trợ xây dựng, rồi liên tục dùng thử và sửa tiếp.
-
-Font Glass là kết quả của quá trình đó: một công cụ được làm vì nhu cầu thật, chia sẻ công khai để người khác có thể dùng và làm nó tốt hơn.
-
----
-
-**Nếu thấy hữu ích:** hãy dùng thử, báo lỗi, góp ý hoặc fork dự án. Nếu thấy nó chưa hữu ích, góp ý vẫn được — chỉ cần đừng bắt font Comic Sans làm mặc định toàn hệ thống là được.
+Mọi Issue, Pull Request hay ý tưởng cải tiến đều được chào đón. Nếu bạn có định fork, tôi xin dùng ké nếu được phép 😗😗

@@ -23,11 +23,8 @@ Nó được tạo theo kiểu **vibe coding**😗: ý tưởng, yêu cầu và 
 
 Tính năng thực tế còn phụ thuộc vào font, trình duyệt và cách website xây dựng giao diện. Không có lời hứa rằng mọi website sẽ đẹp lên 100%; đôi khi website sẽ thắng một hiệp.
 
-<img width="1917" height="1030" alt="code-font" src="https://github.com/user-attachments/assets/3345be07-1366-4f23-80c0-e810928d05d3" />
-<img width="1917" height="1077" alt="Ligatures" src="https://github.com/user-attachments/assets/e80aa1ce-ed8f-4c70-b895-d9513d19c65e" />
-<img width="1917" height="1027" alt="Font-khac-italic" src="https://github.com/user-attachments/assets/a812a696-2d1f-4c04-82d7-fa935d86dc5c" />
-<img width="1917" height="982" alt="SF-Pro-Dislay" src="https://github.com/user-attachments/assets/fe33bb77-9c11-4ff4-960c-89c70b645573" />
-
+<img width="1905" height="865" alt="UI" src="https://github.com/user-attachments/assets/a6ce36b8-4967-4ba4-98bc-1d8d7c093222" />
+<p align="center"><sub><b>EXTENSION SETTING</b></sub></p>
 
 ## Cài đặt
 

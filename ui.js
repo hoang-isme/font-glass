@@ -56,7 +56,7 @@ const text = {
     ligOn: 'Bật ligatures (=> !== ===)',
     ligOff: 'Tắt ligatures',
     cjkTitle: 'Font riêng cho web Hàn · Trung · Nhật',
-    cjkHelp: 'Tự động ưu tiên dùng thay cho font chính khi vào forum, báo hoặc trang web của 3 nước này. Nên ưu tiên chọn các font chuyên dụng cho từng ngôn ngữ (chữ Hán, Kana, Hangul chuẩn).',
+    cjkHelp: 'Tự động ưu tiên dùng thay cho font chính khi vào forum, báo hoặc trang web của 3 nước này. Nên ưu tiên chọn các font chuyên dụng cho từng ngôn ngữ (chữ Hán, Kana, Hangul chuẩn) để thấy rõ sự khác biệt của nét chữ, tránh bị xem xêm nhau.',
     krLabel: '🇰🇷 Web Hàn Quốc (Forum, báo, trang .kr)',
     cnLabel: '🇨🇳 Web Trung Quốc (Forum, báo, .cn/.tw/.hk)',
     jpLabel: '🇯🇵 Web Nhật Bản (Forum, báo, trang .jp)',

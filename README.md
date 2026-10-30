@@ -5,14 +5,13 @@
 
 **Font Glass** là extension cho Chromium, giúp bạn tuỳ chỉnh font hiển thị trên website bằng font có sẵn trên máy hoặc font bạn tự nhập. Dự án bắt đầu từ một nhu cầu rất cụ thể: dùng font hệ thống — đặc biệt là SF Pro/SF UI — trên web, với nhiều quyền kiểm soát hơn những gì mình tìm được ở các công cụ có sẵn.
 
-Nó được tạo theo kiểu **vibe coding**😗: ý tưởng, yêu cầu và quá trình thử nghiệm đến từ người làm dự án; phần code được xây dựng và tinh chỉnh cùng AI (ChatGPT và Gemini).
 ---
 
 ## Có gì trong này?
 
 - **Chọn font cho nội dung web** từ danh sách font mà trình duyệt có thể nhận diện trên máy.
 - **Nhập font riêng** từ các định dạng TTF, OTF, WOFF và WOFF2, dùng trực tiếp trong extension khi không tiện cài font vào hệ thống.
-- **Tách font nội dung và font code** để đoạn code không bị biến thành một cuộc khủng hoảng typographic.
+- **Tách font nội dung và font code** IDK man.
 - **Chỉnh cỡ chữ** theo chế độ có sẵn, theo tỉ lệ hoặc theo số pixel cố định.
 - **Tuỳ chỉnh độ đậm** khi font hỗ trợ trục Variable Font `wght`; font tĩnh sẽ không được giả vờ là variable.
 - **Tuỳ chọn italic** và **ligatures** cho code, với chế độ giữ nguyên, bật hoặc tắt.

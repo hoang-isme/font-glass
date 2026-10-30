@@ -26,19 +26,21 @@ let settings = { ...defaults };
 let prefs = { lang: 'vi', theme: 'light' };
 let fonts = [];
 let localAxes = {};
+let localMeta = {};
 let source = '';
 let host = '';
 let imported = [];
 let saveTimer = 0;
 let resetFlashTimer = 0;
 let resetJustDone = false;
+let activeDrawerIndex = -1;
 const viCache = new Map();
 const varCache = new Map();
 
 const text = {
   vi: {
     importTitle: 'Font từ file',
-    importHelp: 'Ưu tiên WOFF2 (hoặc WOFF, TTF, OTF) • tối đa 20 MB/file, 50 MB tổng. Lưu nhị phân trực tiếp trong IndexedDB.',
+    importHelp: 'Ưu tiên WOFF2 (hoặc WOFF, TTF, OTF) • tối đa 20 MB/file, 50 MB tổng.',
     importOpen: 'Nhập font trong cài đặt ↗',
     importFile: 'Chọn file font',
     deleteFont: 'Xoá font đã nhập',
@@ -56,7 +58,7 @@ const text = {
     ligOn: 'Bật ligatures (=> !== ===)',
     ligOff: 'Tắt ligatures',
     cjkTitle: 'Font riêng cho web Hàn · Trung · Nhật',
-    cjkHelp: 'Tự động ưu tiên dùng thay cho font chính khi vào forum, báo hoặc trang web của 3 nước này. Nên ưu tiên chọn các font chuyên dụng cho từng ngôn ngữ (chữ Hán, Kana, Hangul chuẩn) để thấy rõ sự khác biệt của nét chữ, tránh bị xem xêm nhau.',
+    cjkHelp: 'Tự động ưu tiên dùng thay cho font chính khi vào forum, báo hoặc trang web của 3 nước này. Nên ưu tiên chọn các font chuyên dụng cho từng ngôn ngữ (chữ Hán, Kana, Hangul chuẩn).',
     krLabel: '🇰🇷 Web Hàn Quốc (Forum, báo, trang .kr)',
     cnLabel: '🇨🇳 Web Trung Quốc (Forum, báo, .cn/.tw/.hk)',
     jpLabel: '🇯🇵 Web Nhật Bản (Forum, báo, trang .jp)',
@@ -78,7 +80,7 @@ const text = {
     fallback: 'Quét dự phòng',
     search: 'Tìm font đã cài…',
     family: 'Họ font',
-    scopeNote: 'Bao gồm font cài cho mọi người dùng mà trình duyệt nhìn thấy.',
+    scopeNote: '',
     typeTitle: '02 / Kiểu chữ',
     size: 'Cỡ chữ',
     original: 'Giữ nguyên',
@@ -90,7 +92,7 @@ const text = {
     normal: 'Chữ đứng',
     varWeightLabel: 'Trục Variable Font (wght)',
     varWeightNoFont: 'Chọn một Variable Font ở mục 01 để mở khoá thanh chỉnh độ đậm biến thiên.',
-    varWeightUnsupported: 'Font đang chọn là font tĩnh (không có VF) — đã làm tối, hãy dùng thanh Giả lập bên dưới.',
+    varWeightUnsupported: 'Font đang chọn là font tĩnh (không có VF)',
     varWeightSupported: '✓ Hỗ trợ trục biến thiên wght',
     varStaticBadge: 'Tĩnh',
     fauxWeightLabel: 'Giả lập đậm / mảnh (Faux Bold)',
@@ -113,8 +115,9 @@ const text = {
     resetActiveNote: 'Khôi phục sẽ đưa họ font, font Hàn/Trung/Nhật, font code, cỡ chữ, nghiêng, độ đậm & trang tắt về gốc (giữ nguyên font đã quét/nhập).',
     resetDoneNote: '✓ Đã khôi phục hoàn tất: Toàn bộ kiểu chữ đã về mặc định của website (danh sách font đã quét & đã nhập vẫn giữ nguyên).',
     resetStatus: '✓ Đã khôi phục kiểu chữ về mặc định gốc.',
+    defaultBadge: 'Mặc định',
     options: 'Mở cài đặt ↗',
-    privacy: 'Chỉ lưu trên máy · Không thu thập dữ liệu',
+    privacy: 'Call Me H_s1mpl3',
     websiteFont: 'Font gốc của website',
     saved: 'Đã lưu • tự áp dụng trên trang đang mở.',
     none: 'Chưa quét font.',
@@ -137,7 +140,7 @@ const text = {
   },
   en: {
     importTitle: 'Import a font file',
-    importHelp: 'Prefer WOFF2 (or WOFF, TTF, OTF) • 20 MB/file, 50 MB total. Stored as raw binary in IndexedDB.',
+    importHelp: 'Prefer WOFF2 (or WOFF, TTF, OTF) • 20 MB/file, 50 MB total.',
     importOpen: 'Import in settings ↗',
     importFile: 'Choose a font file',
     deleteFont: 'Delete imported font',
@@ -155,7 +158,7 @@ const text = {
     ligOn: 'Enable ligatures (=> !== ===)',
     ligOff: 'Disable ligatures',
     cjkTitle: 'Fonts for Korean · Chinese · Japanese sites',
-    cjkHelp: 'Automatically overrides the main font when visiting forums, news, or websites from these 3 regions. Prefer dedicated fonts for each script (standard Hanzi, Kana, Hangul) to clearly see distinct stroke variations rather than looking generic.',
+    cjkHelp: 'Automatically overrides the main font when visiting forums, news, or websites from these 3 regions. Prefer dedicated fonts for each script (standard Hanzi, Kana, Hangul).',
     krLabel: '🇰🇷 Korean sites (Forums, news, .kr)',
     cnLabel: '🇨🇳 Chinese sites (Forums, news, .cn/.tw/.hk)',
     jpLabel: '🇯🇵 Japanese sites (Forums, news, .jp)',
@@ -177,7 +180,7 @@ const text = {
     fallback: 'Fallback scan',
     search: 'Search installed fonts…',
     family: 'Font family',
-    scopeNote: 'Includes all-users fonts visible to this browser.',
+    scopeNote: '',
     typeTitle: '02 / Typography',
     size: 'Font size',
     original: 'Keep original',
@@ -189,7 +192,7 @@ const text = {
     normal: 'Use upright',
     varWeightLabel: 'Variable Font Axis (wght)',
     varWeightNoFont: 'Select a Variable Font in section 01 to unlock the weight axis slider.',
-    varWeightUnsupported: 'Selected font is static (non-VF) — dimmed; use the Faux Bold slider below.',
+    varWeightUnsupported: 'Selected font is static (non-VF)',
     varWeightSupported: '✓ Variable wght axis supported',
     varStaticBadge: 'Static',
     fauxWeightLabel: 'Faux Bold / Thin Simulation',
@@ -212,8 +215,9 @@ const text = {
     resetActiveNote: 'Reset restores main font, KR/CN/JP fonts, code font, size, italic, weight & paused sites to default (keeps scanned/imported fonts).',
     resetDoneNote: '✓ Restored: All typography settings returned to website defaults (scanned & imported fonts were kept).',
     resetStatus: '✓ Restored typography settings to defaults.',
+    defaultBadge: 'Default',
     options: 'Open settings ↗',
-    privacy: 'Stored locally · No tracking',
+    privacy: 'Call Me H_s1mpl3',
     websiteFont: 'Original website font',
     saved: 'Saved • applied to open pages.',
     none: 'No fonts scanned yet.',
@@ -507,22 +511,128 @@ function updateWeightControlsUI() {
   return { isVF: false, isStatic: true };
 }
 
-function expandFontList() {
-  const select = $('fontList');
-  const count = select.options.length;
-  if (count > 1) {
-    select.size = Math.min(7, Math.max(2, count));
-  } else {
-    select.removeAttribute('size');
+function updateTriggerDisplay() {
+  const nameEl = $('ftName');
+  const sampleEl = $('ftSample');
+  if (!nameEl || !sampleEl) return;
+
+  if (!settings.family) {
+    nameEl.textContent = t('websiteFont');
+    sampleEl.style.fontFamily = 'inherit';
+    sampleEl.textContent = t('defaultBadge');
+    return;
   }
+
+  const imp = imported.find(f => f.id === settings.family);
+  nameEl.textContent = imp ? `📁 ${imp.name}${imp.axes?.wght ? ' (VF)' : ''}` : settings.family;
+  sampleEl.style.fontFamily = `${JSON.stringify(settings.family)}, sans-serif`;
+  sampleEl.textContent = 'Aa Đg 123';
 }
 
-function collapseFontList() {
-  $('fontList').removeAttribute('size');
+function openFontDrawer() {
+  const listEl = $('fontDrawerList');
+  const trig = $('fontTrigger');
+  if (!listEl) return;
+  listEl.hidden = false;
+  if (trig) trig.setAttribute('aria-expanded', 'true');
+  renderDrawerList();
+}
+
+function closeFontDrawer() {
+  const listEl = $('fontDrawerList');
+  const trig = $('fontTrigger');
+  if (!listEl) return;
+  listEl.hidden = true;
+  if (trig) trig.setAttribute('aria-expanded', 'false');
+  activeDrawerIndex = -1;
+}
+
+function renderDrawerList() {
+  const listEl = $('fontDrawerList');
+  if (!listEl) return;
+
+  const query = $('fontSearch').value.trim().toLocaleLowerCase();
+  const all = [
+    { id: '', label: t('websiteFont'), isDefault: true },
+    ...fonts.map(name => ({
+      id: name,
+      label: name,
+      fullName: localMeta[name]?.fullName || '',
+      postscriptName: localMeta[name]?.postscriptName || '',
+      isVF: !!(localAxes[name]?.wght)
+    })),
+    ...imported.map(f => ({
+      id: f.id,
+      label: `📁 ${f.name}`,
+      fullName: f.name,
+      isVF: !!(f.axes?.wght),
+      isImported: true
+    }))
+  ];
+
+  const matched = all.filter(f => {
+    if (f.isDefault) return !query || f.label.toLocaleLowerCase().includes(query);
+    if (!query) return true;
+    return (
+      f.label.toLocaleLowerCase().includes(query) ||
+      f.id.toLocaleLowerCase().includes(query) ||
+      (f.fullName && f.fullName.toLocaleLowerCase().includes(query)) ||
+      (f.postscriptName && f.postscriptName.toLocaleLowerCase().includes(query))
+    );
+  });
+
+  listEl.replaceChildren();
+
+  if (!matched.length) {
+    const empty = document.createElement('div');
+    empty.className = 'font-drawer-empty';
+    empty.textContent = t('empty');
+    listEl.appendChild(empty);
+    return;
+  }
+
+  matched.forEach(f => {
+    const item = document.createElement('div');
+    const isSelected = f.id === (settings.family || '');
+    item.className = 'font-item' + (isSelected ? ' selected' : '');
+    item.setAttribute('role', 'option');
+    item.setAttribute('data-id', f.id);
+
+    const primaryRow = document.createElement('div');
+    primaryRow.className = 'fi-primary';
+    primaryRow.textContent = f.label;
+
+    if (f.isVF) {
+      const vfChip = document.createElement('span');
+      vfChip.className = 'fi-tag';
+      vfChip.textContent = 'VF';
+      primaryRow.appendChild(vfChip);
+    }
+
+    const specimenBox = document.createElement('div');
+    specimenBox.className = 'fi-specimen';
+    if (f.isDefault) {
+      specimenBox.style.fontFamily = 'inherit';
+      specimenBox.textContent = t('defaultBadge');
+    } else {
+      specimenBox.style.fontFamily = `${JSON.stringify(f.id)}, sans-serif`;
+      specimenBox.textContent = 'Aa Đg 123';
+    }
+
+    item.appendChild(primaryRow);
+    item.appendChild(specimenBox);
+
+    item.onclick = e => {
+      e.stopPropagation();
+      applySelectedFont(f.id);
+      closeFontDrawer();
+    };
+
+    listEl.appendChild(item);
+  });
 }
 
 function renderFonts() {
-  const query = $('fontSearch').value.trim().toLocaleLowerCase();
   const all = [
     ...fonts.map(name => ({ id: name, label: name })),
     ...imported.map(f => ({
@@ -540,18 +650,13 @@ function renderFonts() {
     const select = $(id);
     if (!select) continue;
     select.replaceChildren(new Option(label, ''));
-    const rows = all.filter(
-      f => id !== 'fontList' || f.label.toLocaleLowerCase().includes(query) || f.id === current
-    );
     if (current && !all.some(f => f.id === current)) {
       select.add(new Option(current, current));
     }
-    rows.forEach(f => select.add(new Option(f.label, f.id)));
+    all.forEach(f => select.add(new Option(f.label, f.id)));
     select.value = current || '';
   }
-  if (document.activeElement === $('fontSearch')) {
-    expandFontList();
-  }
+
   const previous = $('importList').value;
   $('importList').replaceChildren(new Option(t('importedLabel'), ''));
   imported.forEach(f => $('importList').add(new Option(f.name, f.id)));
@@ -560,6 +665,11 @@ function renderFonts() {
   $('source').textContent = fonts.length
     ? `${fonts.length} ${t('count')} · ${t(source === 'local' ? 'local' : 'backup')}`
     : t('none');
+
+  updateTriggerDisplay();
+  if (!$('fontDrawerList').hidden) {
+    renderDrawerList();
+  }
 }
 
 function render() {
@@ -607,6 +717,7 @@ function preview() {
       renderViBadge('codeViCheck', settings.codeFamily);
       const { isVF, isStatic } = updateWeightControlsUI();
       updateResetUI();
+      updateTriggerDisplay();
 
       const cp = $('codePreview');
       cp.style.fontFamily = settings.codeFamily ? `${JSON.stringify(settings.codeFamily)}, monospace` : 'monospace';
@@ -673,11 +784,17 @@ async function save(customStatusKey = 'saved') {
   }
   updateResetUI();
   try {
+    settings.fontMeta = localMeta;
     await chrome.storage.local.set({ settings });
     status(customStatusKey);
-    if (!options && customStatusKey !== 'resetStatus') await applyCurrent();
-    else if (!options && customStatusKey === 'resetStatus') {
-      await chrome.runtime.sendMessage({ type: 'font-glass-apply' }).catch(() => {});
+    if (!options && customStatusKey !== 'resetStatus') {
+      await applyCurrent();
+    } else {
+      chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] }).then(tabs => {
+        for (const tab of tabs) {
+          if (tab.id) chrome.tabs.sendMessage(tab.id, { type: 'font-glass-refresh' }).catch(() => {});
+        }
+      }).catch(() => {});
     }
   } catch {
     status('error', true);
@@ -706,8 +823,16 @@ async function scanLocal() {
     if (!window.queryLocalFonts) throw new Error('unsupported');
     const data = await window.queryLocalFonts();
     const byFamily = new Map();
+    const metaMap = {};
     for (const f of data) {
-      if (f.family && !byFamily.has(f.family)) byFamily.set(f.family, f);
+      if (f.family && !byFamily.has(f.family)) {
+        byFamily.set(f.family, f);
+        metaMap[f.family] = {
+          fullName: f.fullName || f.family,
+          postscriptName: f.postscriptName || '',
+          style: f.style || ''
+        };
+      }
     }
     const names = [...byFamily.keys()].sort((a, b) => a.localeCompare(b));
     if (!names.length) {
@@ -726,10 +851,11 @@ async function scanLocal() {
     }
     fonts = names;
     localAxes = axesMap;
+    localMeta = metaMap;
     source = 'local';
     varCache.clear();
     viCache.clear();
-    await chrome.storage.local.set({ fontCache: { fonts, source, axes: localAxes } });
+    await chrome.storage.local.set({ fontCache: { fonts, source, axes: localAxes, meta: localMeta } });
     renderFonts();
     preview();
     status('saved');
@@ -745,19 +871,30 @@ async function scanFallback() {
   status('scanning');
   try {
     const data = await chrome.fontSettings.getFontList();
-    const names = [...new Set(data.map(f => f.fontId).filter(Boolean))].sort((a, b) =>
-      a.localeCompare(b)
-    );
+    const metaMap = {};
+    const names = [];
+    for (const f of data) {
+      if (f.fontId && !names.includes(f.fontId)) {
+        names.push(f.fontId);
+        metaMap[f.fontId] = {
+          fullName: f.displayName || f.fontId,
+          postscriptName: '',
+          style: ''
+        };
+      }
+    }
+    names.sort((a, b) => a.localeCompare(b));
     if (!names.length) {
       status('noList', true);
       return;
     }
     fonts = names;
     localAxes = {};
+    localMeta = metaMap;
     source = 'fallback';
     varCache.clear();
     viCache.clear();
-    await chrome.storage.local.set({ fontCache: { fonts, source, axes: {} } });
+    await chrome.storage.local.set({ fontCache: { fonts, source, axes: {}, meta: localMeta } });
     renderFonts();
     preview();
     status('saved');
@@ -768,8 +905,10 @@ async function scanFallback() {
   }
 }
 
-function applySelectedFont() {
-  settings.family = $('fontList').value;
+function applySelectedFont(fontFamily) {
+  settings.family = fontFamily;
+  const select = $('fontList');
+  if (select) select.value = fontFamily || '';
   const wght = detectVarWeight(settings.family);
   if (!settings.family) {
     settings.varWeightEnabled = false;
@@ -783,6 +922,7 @@ function applySelectedFont() {
   } else {
     settings.varWeightEnabled = false;
   }
+  updateTriggerDisplay();
   save();
 }
 
@@ -805,6 +945,7 @@ async function init() {
   prefs = { ...prefs, ...stored.prefs };
   fonts = stored.fontCache?.fonts || [];
   localAxes = stored.fontCache?.axes || {};
+  localMeta = stored.fontCache?.meta || {};
   source = stored.fontCache?.source || '';
 
   if (!options) {
@@ -876,53 +1017,60 @@ async function init() {
   render();
   if (!host && !options) status('restricted');
 
+  window.scrollTo(0, 0);
+  if ($('main')) $('main').scrollTop = 0;
+
   $('enabled').onchange = () => {
     settings.enabled = $('enabled').checked;
     save();
   };
 
-  $('fontSearch').onfocus = expandFontList;
-  $('fontSearch').onclick = expandFontList;
+  $('fontSearch').onfocus = openFontDrawer;
+  $('fontSearch').onclick = openFontDrawer;
   $('fontSearch').oninput = () => {
-    renderFonts();
-    expandFontList();
+    openFontDrawer();
   };
+
+  $('fontTrigger').onclick = e => {
+    e.stopPropagation();
+    if ($('fontDrawerList').hidden) openFontDrawer();
+    else closeFontDrawer();
+  };
+
   $('fontSearch').onkeydown = e => {
-    const select = $('fontList');
+    const items = document.querySelectorAll('.font-item');
+    if (!items.length) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (select.selectedIndex < select.options.length - 1) {
-        select.selectedIndex++;
-        applySelectedFont();
-      }
+      activeDrawerIndex = Math.min(items.length - 1, activeDrawerIndex + 1);
+      items[activeDrawerIndex]?.scrollIntoView({ block: 'nearest' });
+      items.forEach((it, i) => it.classList.toggle('selected', i === activeDrawerIndex));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      if (select.selectedIndex > 0) {
-        select.selectedIndex--;
-        applySelectedFont();
-      }
-    } else if (e.key === 'Enter' || e.key === 'Escape') {
+      activeDrawerIndex = Math.max(0, activeDrawerIndex - 1);
+      items[activeDrawerIndex]?.scrollIntoView({ block: 'nearest' });
+      items.forEach((it, i) => it.classList.toggle('selected', i === activeDrawerIndex));
+    } else if (e.key === 'Enter') {
       e.preventDefault();
-      collapseFontList();
+      if (activeDrawerIndex >= 0 && items[activeDrawerIndex]) {
+        items[activeDrawerIndex].click();
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeFontDrawer();
       $('fontSearch').blur();
     }
   };
 
-  $('fontPicker').addEventListener('focusout', e => {
-    if (!$('fontPicker').contains(e.relatedTarget)) {
-      collapseFontList();
+  document.addEventListener('click', e => {
+    if (!$('fontPicker').contains(e.target)) {
+      closeFontDrawer();
     }
   });
 
   $('fontList').onchange = () => {
-    applySelectedFont();
-    collapseFontList();
+    applySelectedFont($('fontList').value);
   };
-  $('fontList').addEventListener('click', e => {
-    if (e.target.tagName === 'OPTION') {
-      collapseFontList();
-    }
-  });
 
   $('sizeMode').onchange = () => {
     settings.sizeMode = $('sizeMode').value;
@@ -1024,7 +1172,7 @@ async function init() {
   $('reset').onclick = () => {
     settings = { ...defaults, excluded: [] };
     $('fontSearch').value = '';
-    collapseFontList();
+    closeFontDrawer();
     resetJustDone = true;
     clearTimeout(resetFlashTimer);
     resetFlashTimer = setTimeout(() => {
@@ -1042,6 +1190,7 @@ async function init() {
     if (changes.fontCache) {
       fonts = changes.fontCache.newValue?.fonts || [];
       localAxes = changes.fontCache.newValue?.axes || {};
+      localMeta = changes.fontCache.newValue?.meta || {};
       source = changes.fontCache.newValue?.source || '';
     }
     if (changes.prefs) prefs = { ...prefs, ...changes.prefs.newValue };

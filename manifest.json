@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Font Glass — Local Font Styler",
-  "version": "1.3.0",
-  "description": "Web theo cách bạn muốn. Chọn font máy hoặc file, tách font Hàn/Trung/Nhật, Variable Font & Faux Bold, Ligatures code và kiểm tra Tiếng Việt.",
+  "version": "1.3.2",
+  "description": "Web theo cách bạn muốn. Tra cứu font 2 cột trực quan kèm mẫu chữ sống, cầu nối tên font đa ngữ CJK Hàn/Trung/Nhật, Variable Font & Faux Bold, Ligatures code.",
   "minimum_chrome_version": "103",
   "permissions": [
     "storage",

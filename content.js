@@ -65,7 +65,7 @@
     if (/^ja\b/.test(rawLang)) return 'jp';
     if (/^zh\b/.test(rawLang)) return 'cn';
 
-    // Content script fallback for forums/news on generic .com/.net domains without [lang]
+    // Fallback for generic .com/.net domains without [lang]
     const sample = (document.title + ' ' + (document.body?.innerText || '').slice(0, 1200)).slice(0, 1300);
     if (sample.length >= 12) {
       const hangul = (sample.match(/[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/g) || []).length;
@@ -84,6 +84,107 @@
     if (region === 'cn' && settings.cnFont) return { family: settings.cnFont, isRegional: true, region: 'cn' };
     if (region === 'jp' && settings.jpFont) return { family: settings.jpFont, isRegional: true, region: 'jp' };
     return { family: settings.family || '', isRegional: false, region };
+  }
+
+  // Generates a robust, multi-name font-family stack ensuring Windows/macOS/Linux
+  // matches Chinese/Japanese/Korean fonts by English, native Chinese/Kana/Hangul, PostScript names,
+  // plus safe regional sans-serif fallbacks so text never drops to random mismatched fonts.
+  function buildFamilyStack(fontName, region) {
+    if (!fontName) return '';
+    const names = new Set();
+    names.add(fontName);
+
+    // 1. Check metadata passed from UI scanner (fullName, postscriptName)
+    const meta = settings.fontMeta?.[fontName];
+    if (meta?.fullName) names.add(meta.fullName);
+    if (meta?.postscriptName) names.add(meta.postscriptName);
+
+    // 2. Known CJK alias bridges (covers Founder Type, Hanyi, Apple/Windows dual-name fonts)
+    const lower = fontName.toLowerCase();
+    if (lower.includes('fzzhenghei') || fontName.includes('正黑') || lower.includes('fzzh')) {
+      names.add('方正正黑');
+      names.add('方正正粗黑_GBK');
+      names.add('方正正中黑_GBK');
+      names.add('方正正大黑_GBK');
+      names.add('方正正粗黑');
+      names.add('方正正中黑');
+      names.add('FZZhengHei-B-GBK');
+      names.add('FZZhengHei-DB-GBK');
+      names.add('FZZhengHei-EB-GBK');
+    } else if (lower.includes('fzhei') || fontName.includes('方正黑体') || lower.includes('fzht')) {
+      names.add('方正黑体');
+      names.add('方正黑体_GBK');
+    } else if (lower.includes('fzlanting') || fontName.includes('兰亭')) {
+      names.add('方正兰亭黑');
+      names.add('方正兰亭黑_GBK');
+      names.add('FZLanTingHei-R-GBK');
+    } else if (lower.includes('fzkai') || fontName.includes('楷体')) {
+      names.add('方正楷体');
+      names.add('方正楷体_GBK');
+    }
+
+    if (lower.includes('hiragino') || fontName.includes('ヒラギノ')) {
+      names.add('Hiragino Sans');
+      names.add('Hiragino Kaku Gothic ProN');
+      names.add('ヒラギノ角ゴ ProN');
+      names.add('ヒラギノ角ゴシック');
+      names.add('Hiragino Sans GB');
+    } else if (lower.includes('meiryo') || fontName.includes('メイリオ')) {
+      names.add('Meiryo');
+      names.add('メイリオ');
+    } else if (lower.includes('yu gothic') || fontName.includes('游ゴシック') || lower.includes('yugothic')) {
+      names.add('Yu Gothic');
+      names.add('游ゴシック');
+      names.add('YuGothic');
+    }
+
+    if (lower.includes('malgun') || fontName.includes('맑은')) {
+      names.add('Malgun Gothic');
+      names.add('맑은 고딕');
+    } else if (lower.includes('pretendard')) {
+      names.add('Pretendard');
+      names.add('Pretendard Variable');
+    } else if (lower.includes('nanum') || fontName.includes('나눔')) {
+      names.add('NanumGothic');
+      names.add('나눔고딕');
+    }
+
+    // 3. Append language-specific native system fallbacks
+    const formatted = [...names].map(n => JSON.stringify(n));
+    if (region === 'cn') {
+      formatted.push(
+        '"PingFang SC"',
+        '"Hiragino Sans GB"',
+        '"Microsoft YaHei"',
+        '"微软雅黑"',
+        '"Source Han Sans SC"',
+        '"Noto Sans SC"',
+        '"SimHei"'
+      );
+    } else if (region === 'jp') {
+      formatted.push(
+        '"Hiragino Sans"',
+        '"Hiragino Kaku Gothic ProN"',
+        '"ヒラギノ角ゴ ProN"',
+        '"Meiryo"',
+        '"メイリオ"',
+        '"Yu Gothic"',
+        '"游ゴシック"',
+        '"Source Han Sans JP"',
+        '"Noto Sans JP"'
+      );
+    } else if (region === 'kr') {
+      formatted.push(
+        '"Pretendard"',
+        '"Malgun Gothic"',
+        '"맑은 고딕"',
+        '"Apple SD Gothic Neo"',
+        '"Source Han Sans KR"',
+        '"Noto Sans KR"'
+      );
+    }
+    formatted.push('sans-serif');
+    return formatted.join(',');
   }
 
   function allowed() {
@@ -249,7 +350,8 @@
     if (!allowed() || !typography()) return;
 
     const chosenFamily = active.family;
-    const family = chosenFamily ? `font-family:${JSON.stringify(chosenFamily)},sans-serif!important;` : '';
+    const fontStack = buildFamilyStack(chosenFamily, active.region);
+    const family = fontStack ? `font-family:${fontStack}!important;` : '';
     const italic = ['normal', 'italic'].includes(settings.italic) ? `font-style:${settings.italic}!important;` : '';
 
     let weightCSS = '';
@@ -314,7 +416,8 @@
           ok: true,
           targets: document.querySelectorAll(`[${mark}]`).length,
           enabled: allowed(),
-          region: detectCJKRegion()
+          region: detectCJKRegion(),
+          activeFamily: resolveActiveFamily().family
         });
       })
       .catch(error => respond({ ok: false, error: String(error) }));

@@ -16,8 +16,11 @@ const defaults = {
   fauxWeight: 400,
   codeFamily: '',
   codeLigatures: 'original',
+  krEnabled: false,
   krFont: '',
+  cnEnabled: false,
   cnFont: '',
+  jpEnabled: false,
   jpFont: '',
   excluded: []
 };
@@ -31,9 +34,11 @@ let source = '';
 let host = '';
 let imported = [];
 let saveTimer = 0;
+let searchDebounceTimer = 0;
 let resetFlashTimer = 0;
 let resetJustDone = false;
 let activeDrawerIndex = -1;
+let specimenObserver = null;
 const viCache = new Map();
 const varCache = new Map();
 
@@ -62,7 +67,7 @@ const text = {
     krLabel: '🇰🇷 Web Hàn Quốc (Forum, báo, trang .kr)',
     cnLabel: '🇨🇳 Web Trung Quốc (Forum, báo, .cn/.tw/.hk)',
     jpLabel: '🇯🇵 Web Nhật Bản (Forum, báo, trang .jp)',
-    cjkDefault: 'Dùng theo font chính (hoặc mặc định web)',
+    cjkPickPlaceholder: '— Chọn font cho khu vực này —',
     importedLabel: 'File đã nhập',
     importing: 'Đang kiểm tra và lưu nhị phân vào IndexedDB…',
     importError: 'Không nhập được: file lỗi, định dạng không hỗ trợ hoặc vượt giới hạn dung lượng.',
@@ -162,7 +167,7 @@ const text = {
     krLabel: '🇰🇷 Korean sites (Forums, news, .kr)',
     cnLabel: '🇨🇳 Chinese sites (Forums, news, .cn/.tw/.hk)',
     jpLabel: '🇯🇵 Japanese sites (Forums, news, .jp)',
-    cjkDefault: 'Use main font (or website default)',
+    cjkPickPlaceholder: '— Select a font for this region —',
     importedLabel: 'Imported files',
     importing: 'Validating and saving binary to IndexedDB…',
     importError: 'Import failed: invalid file, unsupported format or size limit exceeded.',
@@ -252,8 +257,11 @@ function isDefaultSettings() {
     settings.enabled === true &&
     !settings.family &&
     !settings.codeFamily &&
+    !settings.krEnabled &&
     !settings.krFont &&
+    !settings.cnEnabled &&
     !settings.cnFont &&
+    !settings.jpEnabled &&
     !settings.jpFont &&
     (settings.codeLigatures || 'original') === 'original' &&
     settings.sizeMode === 'original' &&
@@ -511,6 +519,16 @@ function updateWeightControlsUI() {
   return { isVF: false, isStatic: true };
 }
 
+function updateCJKControlsUI() {
+  for (const [prefix] of [['kr'], ['cn'], ['jp']]) {
+    const enabled = !!settings[`${prefix}Enabled`];
+    const toggle = $(`${prefix}Enabled`);
+    const box = $(`${prefix}Box`);
+    if (toggle) toggle.checked = enabled;
+    if (box) box.classList.toggle('is-off', !enabled);
+  }
+}
+
 function updateTriggerDisplay() {
   const nameEl = $('ftName');
   const sampleEl = $('ftSample');
@@ -529,26 +547,60 @@ function updateTriggerDisplay() {
   sampleEl.textContent = 'Aa Đg 123';
 }
 
+function getFontGroupLetter(label, isImported) {
+  if (isImported) return '📁';
+  const clean = (label || '').replace(/^[^a-zA-Z0-9\u00C0-\u1EF9]+/, '').trim();
+  if (!clean) return '#';
+  const first = clean[0].toUpperCase();
+  if (first >= 'A' && first <= 'Z') return first;
+  const normalized = first.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace('Đ', 'D');
+  if (normalized >= 'A' && normalized <= 'Z') return normalized;
+  return '#';
+}
+
+function ensureSpecimenObserver(rootEl) {
+  if (specimenObserver) specimenObserver.disconnect();
+  specimenObserver = new IntersectionObserver(
+    entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const el = entry.target;
+        const fam = el.getAttribute('data-font');
+        if (fam) {
+          el.style.fontFamily = `${JSON.stringify(fam)}, sans-serif`;
+          el.removeAttribute('data-font');
+        }
+        specimenObserver.unobserve(el);
+      }
+    },
+    { root: rootEl, rootMargin: '90px 0px' }
+  );
+  return specimenObserver;
+}
+
 function openFontDrawer() {
-  const listEl = $('fontDrawerList');
+  const wrapEl = $('fontDrawerWrap');
   const trig = $('fontTrigger');
-  if (!listEl) return;
-  listEl.hidden = false;
+  if (!wrapEl) return;
+  const wasHidden = wrapEl.hidden;
+  wrapEl.hidden = false;
   if (trig) trig.setAttribute('aria-expanded', 'true');
-  renderDrawerList();
+  renderDrawerList(wasHidden);
 }
 
 function closeFontDrawer() {
-  const listEl = $('fontDrawerList');
+  const wrapEl = $('fontDrawerWrap');
   const trig = $('fontTrigger');
-  if (!listEl) return;
-  listEl.hidden = true;
+  if (!wrapEl) return;
+  wrapEl.hidden = true;
   if (trig) trig.setAttribute('aria-expanded', 'false');
   activeDrawerIndex = -1;
+  if (specimenObserver) specimenObserver.disconnect();
 }
 
-function renderDrawerList() {
+function renderDrawerList(scrollToSelected = false) {
   const listEl = $('fontDrawerList');
+  const alphaEl = $('alphaJump');
   if (!listEl) return;
 
   const query = $('fontSearch').value.trim().toLocaleLowerCase();
@@ -581,22 +633,60 @@ function renderDrawerList() {
     );
   });
 
-  listEl.replaceChildren();
-
   if (!matched.length) {
+    if (alphaEl) alphaEl.hidden = true;
     const empty = document.createElement('div');
     empty.className = 'font-drawer-empty';
     empty.textContent = t('empty');
-    listEl.appendChild(empty);
+    listEl.replaceChildren(empty);
     return;
   }
 
-  matched.forEach(f => {
+  const obs = ensureSpecimenObserver(listEl);
+  const frag = document.createDocumentFragment();
+  const groupHeaders = new Map();
+  const groupCounts = new Map();
+
+  for (const f of matched) {
+    if (f.isDefault) continue;
+    const g = getFontGroupLetter(f.label, f.isImported);
+    groupCounts.set(g, (groupCounts.get(g) || 0) + 1);
+  }
+
+  let currentGroup = '';
+  let selectedItemEl = null;
+
+  for (const f of matched) {
+    if (!f.isDefault) {
+      const grp = getFontGroupLetter(f.label, f.isImported);
+      if (grp !== currentGroup) {
+        currentGroup = grp;
+        const header = document.createElement('div');
+        header.className = 'font-group-header';
+        header.setAttribute('data-group', grp);
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = grp;
+        const countSpan = document.createElement('span');
+        countSpan.className = 'fg-count';
+        countSpan.textContent = String(groupCounts.get(grp) || 0);
+        header.append(titleSpan, countSpan);
+        header.onclick = e => {
+          e.stopPropagation();
+          if (alphaEl && !alphaEl.hidden) {
+            listEl.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        };
+        frag.appendChild(header);
+        if (!groupHeaders.has(grp)) groupHeaders.set(grp, header);
+      }
+    }
+
     const item = document.createElement('div');
     const isSelected = f.id === (settings.family || '');
     item.className = 'font-item' + (isSelected ? ' selected' : '');
     item.setAttribute('role', 'option');
     item.setAttribute('data-id', f.id);
+    if (isSelected) selectedItemEl = item;
 
     const primaryRow = document.createElement('div');
     primaryRow.className = 'fi-primary';
@@ -615,12 +705,12 @@ function renderDrawerList() {
       specimenBox.style.fontFamily = 'inherit';
       specimenBox.textContent = t('defaultBadge');
     } else {
-      specimenBox.style.fontFamily = `${JSON.stringify(f.id)}, sans-serif`;
       specimenBox.textContent = 'Aa Đg 123';
+      specimenBox.setAttribute('data-font', f.id);
+      obs.observe(specimenBox);
     }
 
-    item.appendChild(primaryRow);
-    item.appendChild(specimenBox);
+    item.append(primaryRow, specimenBox);
 
     item.onclick = e => {
       e.stopPropagation();
@@ -628,38 +718,94 @@ function renderDrawerList() {
       closeFontDrawer();
     };
 
-    listEl.appendChild(item);
-  });
+    frag.appendChild(item);
+  }
+
+  listEl.replaceChildren(frag);
+
+  if (alphaEl) {
+    if (groupHeaders.size > 1) {
+      const alphaFrag = document.createDocumentFragment();
+      for (const [grp, headerEl] of groupHeaders) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'alpha-btn';
+        btn.textContent = grp;
+        btn.onclick = e => {
+          e.stopPropagation();
+          headerEl.scrollIntoView({ block: 'start' });
+        };
+        alphaFrag.appendChild(btn);
+      }
+      alphaEl.replaceChildren(alphaFrag);
+      alphaEl.hidden = false;
+    } else {
+      alphaEl.hidden = true;
+    }
+  }
+
+  if (scrollToSelected && selectedItemEl) {
+    requestAnimationFrame(() => {
+      selectedItemEl.scrollIntoView({ block: 'nearest' });
+    });
+  }
+}
+
+function buildFontSelectOptions(select, all, firstLabel, currentVal) {
+  if (!select) return;
+  const frag = document.createDocumentFragment();
+  frag.appendChild(new Option(firstLabel, ''));
+  if (currentVal && !all.some(f => f.id === currentVal)) {
+    frag.appendChild(new Option(currentVal, currentVal));
+  }
+
+  const byLetter = new Map();
+  for (const f of all) {
+    const grp = getFontGroupLetter(f.label, f.isImported);
+    if (!byLetter.has(grp)) byLetter.set(grp, []);
+    byLetter.get(grp).push(f);
+  }
+
+  if (byLetter.size > 1) {
+    for (const [grp, list] of byLetter) {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = `── ${grp} ──`;
+      for (const f of list) {
+        optgroup.appendChild(new Option(f.label, f.id));
+      }
+      frag.appendChild(optgroup);
+    }
+  } else {
+    for (const f of all) {
+      frag.appendChild(new Option(f.label, f.id));
+    }
+  }
+
+  select.replaceChildren(frag);
+  select.value = currentVal || '';
 }
 
 function renderFonts() {
   const all = [
-    ...fonts.map(name => ({ id: name, label: name })),
+    ...fonts.map(name => ({ id: name, label: name, isImported: false })),
     ...imported.map(f => ({
       id: f.id,
-      label: `📁 ${f.name}${f.axes?.wght ? ' (VF)' : ''}`
+      label: `📁 ${f.name}${f.axes?.wght ? ' (VF)' : ''}`,
+      isImported: true
     }))
   ];
-  for (const [id, current, label] of [
-    ['fontList', settings.family, t('websiteFont')],
-    ['codeFont', settings.codeFamily, t('codeOriginal')],
-    ['krFont', settings.krFont, t('cjkDefault')],
-    ['cnFont', settings.cnFont, t('cjkDefault')],
-    ['jpFont', settings.jpFont, t('cjkDefault')]
-  ]) {
-    const select = $(id);
-    if (!select) continue;
-    select.replaceChildren(new Option(label, ''));
-    if (current && !all.some(f => f.id === current)) {
-      select.add(new Option(current, current));
-    }
-    all.forEach(f => select.add(new Option(f.label, f.id)));
-    select.value = current || '';
-  }
+
+  buildFontSelectOptions($('fontList'), all, t('websiteFont'), settings.family);
+  buildFontSelectOptions($('codeFont'), all, t('codeOriginal'), settings.codeFamily);
+  buildFontSelectOptions($('krFont'), all, t('cjkPickPlaceholder'), settings.krFont);
+  buildFontSelectOptions($('cnFont'), all, t('cjkPickPlaceholder'), settings.cnFont);
+  buildFontSelectOptions($('jpFont'), all, t('cjkPickPlaceholder'), settings.jpFont);
 
   const previous = $('importList').value;
-  $('importList').replaceChildren(new Option(t('importedLabel'), ''));
-  imported.forEach(f => $('importList').add(new Option(f.name, f.id)));
+  const impFrag = document.createDocumentFragment();
+  impFrag.appendChild(new Option(t('importedLabel'), ''));
+  imported.forEach(f => impFrag.appendChild(new Option(f.name, f.id)));
+  $('importList').replaceChildren(impFrag);
   $('importList').value = imported.some(f => f.id === previous) ? previous : '';
   $('deleteFont').disabled = !$('importList').value;
   $('source').textContent = fonts.length
@@ -667,8 +813,9 @@ function renderFonts() {
     : t('none');
 
   updateTriggerDisplay();
-  if (!$('fontDrawerList').hidden) {
-    renderDrawerList();
+  updateCJKControlsUI();
+  if (!$('fontDrawerWrap').hidden) {
+    renderDrawerList(false);
   }
 }
 
@@ -706,9 +853,9 @@ function preview() {
   FontGlassFonts.sync(imported, [
     settings.family,
     settings.codeFamily,
-    settings.krFont,
-    settings.cnFont,
-    settings.jpFont
+    settings.krEnabled ? settings.krFont : '',
+    settings.cnEnabled ? settings.cnFont : '',
+    settings.jpEnabled ? settings.jpFont : ''
   ])
     .then(() => {
       if (settings.family?.startsWith('FGImported_')) viCache.delete(settings.family);
@@ -716,6 +863,7 @@ function preview() {
       renderViBadge('viCheck', settings.family);
       renderViBadge('codeViCheck', settings.codeFamily);
       const { isVF, isStatic } = updateWeightControlsUI();
+      updateCJKControlsUI();
       updateResetUI();
       updateTriggerDisplay();
 
@@ -937,10 +1085,21 @@ function setupAttnToggle(btnId, boxId) {
   };
 }
 
+function migrateCJKSwitches(rawSettings) {
+  for (const prefix of ['kr', 'cn', 'jp']) {
+    const enKey = `${prefix}Enabled`;
+    const fontKey = `${prefix}Font`;
+    if (rawSettings && rawSettings[enKey] === undefined) {
+      settings[enKey] = Boolean(settings[fontKey]);
+    }
+  }
+}
+
 async function init() {
   const stored = await chrome.storage.local.get(['settings', 'prefs', 'fontCache', 'importedFonts']);
   settings = { ...defaults, ...stored.settings };
   delete settings.oled;
+  migrateCJKSwitches(stored.settings);
   imported = stored.importedFonts || [];
   prefs = { ...prefs, ...stored.prefs };
   fonts = stored.fontCache?.fonts || [];
@@ -974,18 +1133,32 @@ async function init() {
     save();
   };
 
-  $('krFont').onchange = () => {
-    settings.krFont = $('krFont').value;
-    save();
-  };
-  $('cnFont').onchange = () => {
-    settings.cnFont = $('cnFont').value;
-    save();
-  };
-  $('jpFont').onchange = () => {
-    settings.jpFont = $('jpFont').value;
-    save();
-  };
+  for (const prefix of ['kr', 'cn', 'jp']) {
+    const selectEl = $(`${prefix}Font`);
+    const toggleEl = $(`${prefix}Enabled`);
+
+    selectEl.onchange = () => {
+      const val = selectEl.value;
+      settings[`${prefix}Font`] = val;
+      settings[`${prefix}Enabled`] = Boolean(val);
+      updateCJKControlsUI();
+      save();
+    };
+
+    toggleEl.onchange = () => {
+      const checked = toggleEl.checked;
+      if (checked && !settings[`${prefix}Font`]) {
+        const firstFont = fonts[0] || imported[0]?.id || '';
+        if (firstFont) {
+          settings[`${prefix}Font`] = firstFont;
+          selectEl.value = firstFont;
+        }
+      }
+      settings[`${prefix}Enabled`] = checked && Boolean(settings[`${prefix}Font`]);
+      updateCJKControlsUI();
+      save();
+    };
+  }
 
   $('importList').onchange = () => {
     $('deleteFont').disabled = !$('importList').value;
@@ -1000,9 +1173,18 @@ async function init() {
       settings.fauxWeightEnabled = false;
     }
     if (settings.codeFamily === id) settings.codeFamily = '';
-    if (settings.krFont === id) settings.krFont = '';
-    if (settings.cnFont === id) settings.cnFont = '';
-    if (settings.jpFont === id) settings.jpFont = '';
+    if (settings.krFont === id) {
+      settings.krFont = '';
+      settings.krEnabled = false;
+    }
+    if (settings.cnFont === id) {
+      settings.cnFont = '';
+      settings.cnEnabled = false;
+    }
+    if (settings.jpFont === id) {
+      settings.jpFont = '';
+      settings.jpEnabled = false;
+    }
     varCache.delete(id);
     viCache.delete(id);
     await chrome.storage.local.set({ settings, importedFonts: imported });
@@ -1025,15 +1207,23 @@ async function init() {
     save();
   };
 
-  $('fontSearch').onfocus = openFontDrawer;
-  $('fontSearch').onclick = openFontDrawer;
+  $('fontSearch').onfocus = () => {
+    if ($('fontDrawerWrap').hidden) openFontDrawer();
+  };
+  $('fontSearch').onclick = () => {
+    if ($('fontDrawerWrap').hidden) openFontDrawer();
+  };
   $('fontSearch').oninput = () => {
-    openFontDrawer();
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      if ($('fontDrawerWrap').hidden) openFontDrawer();
+      else renderDrawerList(false);
+    }, 60);
   };
 
   $('fontTrigger').onclick = e => {
     e.stopPropagation();
-    if ($('fontDrawerList').hidden) openFontDrawer();
+    if ($('fontDrawerWrap').hidden) openFontDrawer();
     else closeFontDrawer();
   };
 
@@ -1185,7 +1375,10 @@ async function init() {
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
-    if (changes.settings) settings = { ...defaults, ...changes.settings.newValue };
+    if (changes.settings) {
+      settings = { ...defaults, ...changes.settings.newValue };
+      migrateCJKSwitches(changes.settings.newValue);
+    }
     if (changes.importedFonts) imported = changes.importedFonts.newValue || [];
     if (changes.fontCache) {
       fonts = changes.fontCache.newValue?.fonts || [];

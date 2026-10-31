@@ -18,6 +18,7 @@
   const krDomains = /(^|\.)(kr|naver\.com|daum\.net|kakao\.com|dcinside\.com|fmkorea\.com|ruliweb\.com|inven\.co\.kr|clien\.net|theqoo\.net|nate\.com|arca\.live|namu\.wiki|ppomppu\.co\.kr|dogdrip\.net|instiz\.net|velog\.io|tistory\.com)$/i;
   const cnDomains = /(^|\.)(cn|tw|hk|mo|weibo\.com|baidu\.com|zhihu\.com|bilibili\.com|qq\.com|163\.com|sina\.com\.cn|sohu\.com|nga\.cn|hupu\.com|douban\.com|xiaohongshu\.com|ptt\.cc|gamer\.com\.tw|mobile01\.com|LIHKG\.com|discuss\.com\.hk|juejin\.cn|csdn\.net)$/i;
   const jpDomains = /(^|\.)(jp|5ch\.net|2ch\.sc|qiita\.com|zenn\.dev|note\.com|nicovideo\.jp|pixiv\.net|ameblo\.jp|livedoor\.com|hatena\.ne\.jp|nhk\.or\.jp|asahi\.com|mainichi\.jp|yomiuri\.co\.jp|kakaku\.com|girlschannel\.net|bakusai\.com)$/i;
+  const globalPlatforms = /(^|\.)(youtube\.com|google\.com|facebook\.com|instagram\.com|x\.com|twitter\.com|reddit\.com|github\.com|spotify\.com|discord\.com|tiktok\.com|netflix\.com|chatgpt\.com)$/i;
 
   let settings = {};
   let key = '';
@@ -51,9 +52,10 @@
   // Detects if the current webpage is Korean ('kr'), Chinese ('cn'), or Japanese ('jp')
   function detectCJKRegion() {
     const host = topHost();
-    if (krDomains.test(host) || krDomains.test(location.hostname)) return 'kr';
-    if (jpDomains.test(host) || jpDomains.test(location.hostname)) return 'jp';
-    if (cnDomains.test(host) || cnDomains.test(location.hostname)) return 'cn';
+    const curHost = location.hostname;
+    if (krDomains.test(host) || krDomains.test(curHost)) return 'kr';
+    if (jpDomains.test(host) || jpDomains.test(curHost)) return 'jp';
+    if (cnDomains.test(host) || cnDomains.test(curHost)) return 'cn';
 
     const rawLang = (
       document.documentElement?.getAttribute('lang') ||
@@ -61,28 +63,40 @@
       document.body?.getAttribute('lang') ||
       ''
     ).trim().toLowerCase();
-    if (/^ko\b/.test(rawLang)) return 'kr';
-    if (/^ja\b/.test(rawLang)) return 'jp';
-    if (/^zh\b/.test(rawLang)) return 'cn';
 
-    // Fallback for generic .com/.net domains without [lang]
-    const sample = (document.title + ' ' + (document.body?.innerText || '').slice(0, 1200)).slice(0, 1300);
-    if (sample.length >= 12) {
+    // 1. If the website explicitly declares its language, follow it strictly!
+    if (rawLang) {
+      if (/^ko\b/.test(rawLang)) return 'kr';
+      if (/^ja\b/.test(rawLang)) return 'jp';
+      if (/^zh\b/.test(rawLang)) return 'cn';
+      // Explicit non-CJK language (e.g. 'vi', 'en', 'fr') -> NEVER override with CJK font!
+      return '';
+    }
+
+    // 2. Global multi-lingual platforms without lang tag must not be hijacked by foreign song/post titles
+    if (globalPlatforms.test(host) || globalPlatforms.test(curHost)) {
+      return '';
+    }
+
+    // 3. Fallback text heuristic ONLY for generic .com/.net forums/blogs completely lacking a [lang] tag
+    const sample = (document.title + ' ' + (document.body?.innerText || '').slice(0, 1500)).slice(0, 1600);
+    const totalChars = (sample.match(/[\p{L}\p{N}]/gu) || []).length;
+    if (totalChars >= 40) {
       const hangul = (sample.match(/[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/g) || []).length;
-      if (hangul >= 12) return 'kr';
+      if (hangul / totalChars >= 0.25) return 'kr';
       const kana = (sample.match(/[\u3040-\u30FF\u31F0-\u31FF]/g) || []).length;
-      if (kana >= 10) return 'jp';
+      if (kana / totalChars >= 0.15) return 'jp';
       const han = (sample.match(/[\u4E00-\u9FFF]/g) || []).length;
-      if (han >= 20 && kana < 3 && hangul < 3) return 'cn';
+      if (han / totalChars >= 0.35 && kana === 0 && hangul === 0) return 'cn';
     }
     return '';
   }
 
   function resolveActiveFamily() {
     const region = detectCJKRegion();
-    if (region === 'kr' && settings.krFont) return { family: settings.krFont, isRegional: true, region: 'kr' };
-    if (region === 'cn' && settings.cnFont) return { family: settings.cnFont, isRegional: true, region: 'cn' };
-    if (region === 'jp' && settings.jpFont) return { family: settings.jpFont, isRegional: true, region: 'jp' };
+    if (region === 'kr' && settings.krEnabled !== false && settings.krFont) return { family: settings.krFont, isRegional: true, region: 'kr' };
+    if (region === 'cn' && settings.cnEnabled !== false && settings.cnFont) return { family: settings.cnFont, isRegional: true, region: 'cn' };
+    if (region === 'jp' && settings.jpEnabled !== false && settings.jpFont) return { family: settings.jpFont, isRegional: true, region: 'jp' };
     return { family: settings.family || '', isRegional: false, region };
   }
 
@@ -111,6 +125,10 @@
       names.add('FZZhengHei-B-GBK');
       names.add('FZZhengHei-DB-GBK');
       names.add('FZZhengHei-EB-GBK');
+    } else if (lower.includes('fzdabiaosong') || fontName.includes('大标宋')) {
+      names.add('方正大标宋_GBK');
+      names.add('方正大标宋');
+      names.add('FZDaBiaoSong-B06S');
     } else if (lower.includes('fzhei') || fontName.includes('方正黑体') || lower.includes('fzht')) {
       names.add('方正黑体');
       names.add('方正黑体_GBK');
@@ -435,8 +453,11 @@
     fauxWeight: 400,
     codeFamily: '',
     codeLigatures: 'original',
+    krEnabled: false,
     krFont: '',
+    cnEnabled: false,
     cnFont: '',
+    jpEnabled: false,
     jpFont: ''
   };
   let loadEpoch = 0;
@@ -448,7 +469,15 @@
     delete next.oled;
     await FontGlassFonts.sync(
       data.importedFonts || [],
-      next.enabled ? [next.family, next.codeFamily, next.krFont, next.cnFont, next.jpFont] : []
+      next.enabled
+        ? [
+            next.family,
+            next.codeFamily,
+            next.krEnabled !== false ? next.krFont : '',
+            next.cnEnabled !== false ? next.cnFont : '',
+            next.jpEnabled !== false ? next.jpFont : ''
+          ]
+        : []
     );
     if (epoch !== loadEpoch) return;
     settings = next;
